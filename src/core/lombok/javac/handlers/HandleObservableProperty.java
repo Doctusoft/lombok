@@ -49,6 +49,7 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 	public void createSetterForFields(AccessLevel level, Collection<JavacNode> fieldNodes, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
 		for (JavacNode fieldNode : fieldNodes) {
 			createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam);
+			new HandleGetter().generateGetterForField(fieldNode, errorNode.get(), level, false);
 		}
 	}
 	
@@ -74,16 +75,13 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		for (String altName : toAllSetterNames(fieldNode)) {
 			switch (methodExists(altName, fieldNode, false, 1)) {
 			case EXISTS_BY_LOMBOK:
-				// TODO raise an error
+			case EXISTS_BY_USER: {
+				String altNameExpl = "";
+				if (!altName.equals(methodName)) altNameExpl = String.format(" (%s)", altName);
+				source.addWarning(
+					String.format("Not generating %s(): A method with that name already exists%s. Automatic change propagation won't work!", methodName, altNameExpl));
 				return;
-			case EXISTS_BY_USER:
-				if (whineIfExists) {
-					String altNameExpl = "";
-					if (!altName.equals(methodName)) altNameExpl = String.format(" (%s)", altName);
-					source.addWarning(
-						String.format("Not generating %s(): A method with that name already exists%s", methodName, altNameExpl));
-				}
-				return;
+			}
 			default:
 			case NOT_EXISTS:
 				//continue scanning the other alt names.

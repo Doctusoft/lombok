@@ -50,6 +50,7 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 			List<Annotation> onMethod = unboxAndRemoveAnnotationParameter(ast, "onMethod", "@Setter(onMethod=", annotationNode);
 			List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
 			createSetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, onMethod, onParam);
+			new HandleGetter().createGetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, false, onMethod);
 		}
 	}
 	
@@ -79,16 +80,13 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		for (String altName : toAllSetterNames(fieldNode, isBoolean)) {
 			switch (methodExists(altName, fieldNode, false, 1)) {
 			case EXISTS_BY_LOMBOK:
-				// TODO raise an error
+			case EXISTS_BY_USER: {
+				String altNameExpl = "";
+				if (!altName.equals(setterName)) altNameExpl = String.format(" (%s)", altName);
+				errorNode.addError(
+						String.format("Not generating %s(): A method with that name already exists%s. Automatic change propagation won't work!", setterName, altNameExpl));
 				return;
-			case EXISTS_BY_USER:
-				if (whineIfExists) {
-					String altNameExpl = "";
-					if (!altName.equals(setterName)) altNameExpl = String.format(" (%s)", altName);
-					errorNode.addWarning(
-						String.format("Not generating %s(): A method with that name already exists%s", setterName, altNameExpl));
-				}
-				return;
+			}
 			default:
 			case NOT_EXISTS:
 				//continue scanning the other alt names.
