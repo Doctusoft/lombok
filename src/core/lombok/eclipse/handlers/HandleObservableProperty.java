@@ -1,6 +1,5 @@
 package lombok.eclipse.handlers;
 
-import static lombok.core.handlers.HandlerUtil.*;
 import static lombok.eclipse.Eclipse.*;
 import static lombok.eclipse.handlers.EclipseHandlerUtil.*;
 
@@ -12,6 +11,7 @@ import java.util.List;
 import lombok.AccessLevel;
 import lombok.core.AST.Kind;
 import lombok.core.AnnotationValues;
+import lombok.core.TransformationsUtil;
 import lombok.eclipse.Eclipse;
 import lombok.eclipse.EclipseAnnotationHandler;
 import lombok.eclipse.EclipseNode;
@@ -171,8 +171,8 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		method.bodyStart = method.declarationSourceStart = method.sourceStart = source.sourceStart;
 		method.bodyEnd = method.declarationSourceEnd = method.sourceEnd = source.sourceEnd;
 		
-		Annotation[] nonNulls = findAnnotations(field, NON_NULL_PATTERN);
-		Annotation[] nullables = findAnnotations(field, NULLABLE_PATTERN);
+		Annotation[] nonNulls = findAnnotations(field, TransformationsUtil.NON_NULL_PATTERN);
+		Annotation[] nullables = findAnnotations(field, TransformationsUtil.NULLABLE_PATTERN);
 		List<Statement> statements = new ArrayList<Statement>(5);
 		if (nonNulls.length == 0) {
 			statements.add(assignment);

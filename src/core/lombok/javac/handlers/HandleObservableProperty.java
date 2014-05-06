@@ -1,6 +1,5 @@
 package lombok.javac.handlers;
 
-import static lombok.core.handlers.HandlerUtil.*;
 import static lombok.javac.Javac.CTC_VOID;
 import static lombok.javac.handlers.JavacHandlerUtil.*;
 
@@ -9,6 +8,7 @@ import java.util.Collection;
 import lombok.AccessLevel;
 import lombok.core.AST.Kind;
 import lombok.core.AnnotationValues;
+import lombok.core.TransformationsUtil;
 import lombok.javac.Javac;
 import lombok.javac.JavacAnnotationHandler;
 import lombok.javac.JavacNode;
@@ -125,8 +125,8 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		JCAssign assign = treeMaker.Assign(fieldRef, treeMaker.Ident(fieldDecl.name));
 		
 		ListBuffer<JCStatement> statements = new ListBuffer<JCStatement>();
-		List<JCAnnotation> nonNulls = findAnnotations(field, NON_NULL_PATTERN);
-		List<JCAnnotation> nullables = findAnnotations(field, NULLABLE_PATTERN);
+		List<JCAnnotation> nonNulls = findAnnotations(field, TransformationsUtil.NON_NULL_PATTERN);
+		List<JCAnnotation> nullables = findAnnotations(field, TransformationsUtil.NULLABLE_PATTERN);
 		
 		Name methodName = field.toName(setterName);
 		List<JCAnnotation> annsOnParam = copyAnnotations(onParam).appendList(nonNulls).appendList(nullables);
