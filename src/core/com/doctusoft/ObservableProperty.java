@@ -5,8 +5,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target({ElementType.FIELD, ElementType.TYPE})
 @Retention(RetentionPolicy.SOURCE)
+@Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD})
 public @interface ObservableProperty {
 	/**
 	 * Readonly attributes throw an {@link UnsupportedOperationException} when written. 
