@@ -106,7 +106,7 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
 		JCExpression typeRef = chainDotsString(field.up(), "com.doctusoft.bean.internal.PropertyListeners");
 		JCVariableDecl listenersField = recursiveSetGeneratedBy(maker.VarDef(
-				maker.Modifiers(Flags.PUBLIC | Flags.FINAL | Flags.TRANSIENT),
+				maker.Modifiers(Flags.PUBLIC | Flags.TRANSIENT),
 				field.toName("$$" + fieldDecl.name.toString() + "$listeners"), typeRef,
 					maker.NewClass(null, List.<JCExpression>nil(), typeRef, List.<JCExpression>nil(), null)), source, field.up().getContext());
 

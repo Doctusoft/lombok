@@ -17,7 +17,6 @@ import lombok.eclipse.EclipseAnnotationHandler;
 import lombok.eclipse.EclipseNode;
 import lombok.eclipse.handlers.EclipseHandlerUtil.FieldAccess;
 
-import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
 import org.eclipse.jdt.internal.compiler.ast.AllocationExpression;
 import org.eclipse.jdt.internal.compiler.ast.Annotation;
@@ -104,7 +103,8 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		FieldDeclaration field = (FieldDeclaration) fieldNode.get();
 		FieldDeclaration listenerDeclaration = new FieldDeclaration(("$$" + new String(field.name) + "$listeners").toCharArray(), 0,0);
 		listenerDeclaration.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );
-		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG | Flags.AccTransient | Flags.AccFinal | Flags.AccPublic;
+		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
+		listenerDeclaration.modifiers |= ClassFileConstants.AccTransient | ClassFileConstants.AccPublic; 
 		AllocationExpression init = new AllocationExpression();
 		init.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );	// create a new typereference instance, it's important
 		listenerDeclaration.initialization = init;
