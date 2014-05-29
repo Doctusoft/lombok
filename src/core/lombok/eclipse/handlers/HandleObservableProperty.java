@@ -104,7 +104,7 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		FieldDeclaration listenerDeclaration = new FieldDeclaration(("$$" + new String(field.name) + "$listeners").toCharArray(), 0,0);
 		listenerDeclaration.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );
 		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
-		listenerDeclaration.modifiers |= ClassFileConstants.AccTransient | ClassFileConstants.AccPublic; 
+		listenerDeclaration.modifiers |= ClassFileConstants.AccPublic; 
 		AllocationExpression init = new AllocationExpression();
 		init.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );	// create a new typereference instance, it's important
 		listenerDeclaration.initialization = init;
