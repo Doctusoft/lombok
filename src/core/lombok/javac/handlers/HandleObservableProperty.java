@@ -1,6 +1,6 @@
 package lombok.javac.handlers;
 
-import static lombok.javac.Javac.CTC_VOID;
+import static lombok.javac.Javac.*;
 import static lombok.javac.handlers.JavacHandlerUtil.*;
 
 import java.util.Collection;
@@ -23,8 +23,11 @@ import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCAnnotation;
 import com.sun.tools.javac.tree.JCTree.JCAssign;
+import com.sun.tools.javac.tree.JCTree.JCBinary;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
+import com.sun.tools.javac.tree.JCTree.JCIdent;
+import com.sun.tools.javac.tree.JCTree.JCIf;
 import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
 import com.sun.tools.javac.tree.JCTree.JCMethodInvocation;
 import com.sun.tools.javac.tree.JCTree.JCReturn;
@@ -105,10 +108,11 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 	public static JCVariableDecl createListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
 		JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
 		JCExpression typeRef = chainDotsString(field.up(), "com.doctusoft.bean.internal.PropertyListeners");
+		// field initialization removed. The PropertyListeners is now instantiated lazyly when first adding a listener
 		JCVariableDecl listenersField = recursiveSetGeneratedBy(maker.VarDef(
 				maker.Modifiers(Flags.PUBLIC),
 				field.toName("$$" + fieldDecl.name.toString() + "$listeners"), typeRef,
-					maker.NewClass(null, List.<JCExpression>nil(), typeRef, List.<JCExpression>nil(), null)), source, field.up().getContext());
+					null), source, field.up().getContext());
 
 		return listenersField;
 	}
@@ -157,9 +161,12 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		}
 		
 		// invoke value change listeners
+		JCIdent listenersField = treeMaker.Ident(field.toName("$$" + fieldDecl.name.toString() + "$listeners"));
+		JCBinary condition = treeMaker.Binary(CTC_NOT_EQUAL, listenersField, treeMaker.Literal(CTC_BOT, null));
 		List<JCExpression> listenerArgs = List.of((JCExpression) treeMaker.Ident(fieldDecl.name));
-		JCMethodInvocation listenerInvocation = treeMaker.Apply(NIL_EXPRESSION, treeMaker.Select(treeMaker.Ident(field.toName("$$" + fieldDecl.name.toString() + "$listeners")), field.toName("fireListeners")), listenerArgs);
-		statements.append(treeMaker.Exec(listenerInvocation));
+		JCMethodInvocation listenerInvocation = treeMaker.Apply(NIL_EXPRESSION, treeMaker.Select(listenersField, field.toName("fireListeners")), listenerArgs);
+		JCIf listenerIf = treeMaker.If(condition, treeMaker.Exec(listenerInvocation), null);
+		statements.append(listenerIf);
 		
 		JCBlock methodBody = treeMaker.Block(0, statements.toList());
 		List<JCTypeParameter> methodGenericParams = List.nil();

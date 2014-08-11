@@ -18,15 +18,18 @@ import lombok.eclipse.EclipseNode;
 import lombok.eclipse.handlers.EclipseHandlerUtil.FieldAccess;
 
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
-import org.eclipse.jdt.internal.compiler.ast.AllocationExpression;
 import org.eclipse.jdt.internal.compiler.ast.Annotation;
 import org.eclipse.jdt.internal.compiler.ast.Argument;
 import org.eclipse.jdt.internal.compiler.ast.Assignment;
+import org.eclipse.jdt.internal.compiler.ast.EqualExpression;
 import org.eclipse.jdt.internal.compiler.ast.Expression;
 import org.eclipse.jdt.internal.compiler.ast.FieldDeclaration;
+import org.eclipse.jdt.internal.compiler.ast.IfStatement;
 import org.eclipse.jdt.internal.compiler.ast.MessageSend;
 import org.eclipse.jdt.internal.compiler.ast.MethodDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.NameReference;
+import org.eclipse.jdt.internal.compiler.ast.NullLiteral;
+import org.eclipse.jdt.internal.compiler.ast.OperatorIds;
 import org.eclipse.jdt.internal.compiler.ast.QualifiedTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.ReturnStatement;
 import org.eclipse.jdt.internal.compiler.ast.SingleNameReference;
@@ -104,10 +107,8 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		FieldDeclaration listenerDeclaration = new FieldDeclaration(("$$" + new String(field.name) + "$listeners").toCharArray(), 0,0);
 		listenerDeclaration.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );
 		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
-		listenerDeclaration.modifiers |= ClassFileConstants.AccPublic; 
-		AllocationExpression init = new AllocationExpression();
-		init.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );	// create a new typereference instance, it's important
-		listenerDeclaration.initialization = init;
+		listenerDeclaration.modifiers |= ClassFileConstants.AccPublic;
+		// field initialization removed. The PropertyListeners is now instantiated lazyly when first adding a listener
 		return listenerDeclaration;
 	}
 	
@@ -182,12 +183,16 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		}
 		
 		// invoke value change listeners
+		//   if (propertyListeners != null)
+		Expression condition = new EqualExpression(new SingleNameReference(("$$" + new String(field.name) + "$listeners").toCharArray(), p),
+					new NullLiteral(pS, pE), OperatorIds.NOT_EQUAL);
 		MessageSend invoke = new MessageSend();
 		invoke.selector = "fireListeners".toCharArray();
 		invoke.receiver = new SingleNameReference(("$$" + new String(field.name) + "$listeners").toCharArray(), p);
 		invoke.arguments = new Expression[1];
 		invoke.arguments[0] = new SingleNameReference(field.name, p);
-		statements.add(invoke);
+		IfStatement ifStatement = new IfStatement(condition, invoke, pS, pE);
+		statements.add(ifStatement);
 		
 		if (shouldReturnThis) {
 			ThisReference thisRef = new ThisReference(pS, pE);
