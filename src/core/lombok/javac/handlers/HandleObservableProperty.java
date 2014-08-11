@@ -15,6 +15,7 @@ import lombok.javac.JavacNode;
 import lombok.javac.JavacTreeMaker;
 import lombok.javac.handlers.JavacHandlerUtil.CopyJavadoc;
 import lombok.javac.handlers.JavacHandlerUtil.FieldAccess;
+import lombok.javac.handlers.JavacHandlerUtil.MemberExistsResult;
 
 import org.mangosdk.spi.ProviderFor;
 
@@ -25,6 +26,7 @@ import com.sun.tools.javac.tree.JCTree.JCAnnotation;
 import com.sun.tools.javac.tree.JCTree.JCAssign;
 import com.sun.tools.javac.tree.JCTree.JCBinary;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
+import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 import com.sun.tools.javac.tree.JCTree.JCIdent;
 import com.sun.tools.javac.tree.JCTree.JCIf;
@@ -51,12 +53,24 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 
 	public void createSetterForFields(AccessLevel level, Collection<JavacNode> fieldNodes, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
 		for (JavacNode fieldNode : fieldNodes) {
-			createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam);
+			boolean isModelObject = false;
+			// TODO this should be more intelligent, without false positives of course, and checking supertypes as well ... (if possible at all)
+			JCClassDecl classDecl = (JCClassDecl) fieldNode.up().get();
+			if (classDecl != null && classDecl.implementing != null) {
+				for (JCExpression implementing : classDecl.implementing) {
+					// JCIdent
+					if (implementing.toString().contains("ModelObject")) {
+						isModelObject = true;
+						break;
+					}
+				}
+			}
+			createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam, isModelObject);
 			new HandleGetter().generateGetterForField(fieldNode, errorNode.get(), level, false);
 		}
 	}
 	
-	public void createSetterForField(AccessLevel level, JavacNode fieldNode, JavacNode source, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+	public void createSetterForField(AccessLevel level, JavacNode fieldNode, JavacNode source, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam, boolean isModelObject) {
 		if (fieldNode.getKind() != Kind.FIELD) {
 			fieldNode.addError("@Setter is only supported on a class or a field.");
 			return;
@@ -97,6 +111,16 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		injectMethod(fieldNode.up(), createdSetter);
 		JCVariableDecl listenersField = createListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get(), onMethod, onParam);
 		injectField(fieldNode.up(), listenersField);
+		if (JavacHandlerUtil.fieldExists("$$listeners", fieldNode) == MemberExistsResult.NOT_EXISTS) {
+			JCVariableDecl beanListenersField = createBeanListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get(), onMethod, onParam);
+			injectField(fieldNode.up(), beanListenersField);
+		}
+		if (isModelObject) {
+			if (methodExists("getModelObjectDescriptor", fieldNode, 0) == MemberExistsResult.NOT_EXISTS) {
+				JCMethodDecl methodDecl = createGetModelObjectDescriptor(access, fieldNode, fieldNode.getTreeMaker(), source.get());
+				injectMethod(fieldNode.up(), methodDecl);
+			}
+		}
 	}
 	
 	public static JCMethodDecl createSetter(long access, JavacNode field, JavacTreeMaker treeMaker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
@@ -104,6 +128,29 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		boolean returnThis = shouldReturnThis(field);
 		return createSetter(access, field, treeMaker, setterName, returnThis, source, onMethod, onParam);
 	}
+	
+	public static JCMethodDecl createGetModelObjectDescriptor(long access, JavacNode field, JavacTreeMaker treeMaker, JCTree source) {
+		
+		ListBuffer<JCStatement> statements = new ListBuffer<JCStatement>();
+		
+		Name methodName = field.toName("getModelObjectDescriptor");
+		
+		JCReturn result = treeMaker.Return(treeMaker.Select(treeMaker.Ident(field.toName(field.up().getName() + "_")), field.toName("_descriptor")));
+		statements.add(result);
+		
+		JCExpression methodType = chainDotsString(field.up(), "com.doctusoft.bean.ModelObjectDescriptor");
+		
+		JCBlock methodBody = treeMaker.Block(0, statements.toList());
+		List<JCTypeParameter> methodGenericParams = List.nil();
+		List<JCVariableDecl> parameters = List.nil();
+		List<JCExpression> throwsClauses = List.nil();
+		
+		JCMethodDecl decl = recursiveSetGeneratedBy(treeMaker.MethodDef(treeMaker.Modifiers(access), methodName, methodType,
+				methodGenericParams, parameters, throwsClauses, methodBody, null), source, field.getContext());
+		copyJavadoc(field, decl, CopyJavadoc.SETTER);
+		return decl;
+	}
+
 	
 	public static JCVariableDecl createListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
 		JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
@@ -116,6 +163,18 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 
 		return listenersField;
 	}
+
+	public static JCVariableDecl createBeanListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+		JCExpression typeRef = chainDotsString(field.up(), "com.doctusoft.bean.internal.BeanPropertyListeners");
+		// field initialization removed. The PropertyListeners is now instantiated lazyly when first adding a listener
+		JCVariableDecl listenersField = recursiveSetGeneratedBy(maker.VarDef(
+				maker.Modifiers(Flags.PUBLIC),
+				field.toName("$$listeners"), typeRef,
+					null), source, field.up().getContext());
+
+		return listenersField;
+	}
+	
 	private static final List<JCExpression> NIL_EXPRESSION = List.nil();
 
 	public static JCMethodDecl createSetter(long access, JavacNode field, JavacTreeMaker treeMaker, String setterName, boolean shouldReturnThis, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
@@ -160,13 +219,27 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 			statements.append(returnStatement);
 		}
 		
-		// invoke value change listeners
-		JCIdent listenersField = treeMaker.Ident(field.toName("$$" + fieldDecl.name.toString() + "$listeners"));
-		JCBinary condition = treeMaker.Binary(CTC_NOT_EQUAL, listenersField, treeMaker.Literal(CTC_BOT, null));
-		List<JCExpression> listenerArgs = List.of((JCExpression) treeMaker.Ident(fieldDecl.name));
-		JCMethodInvocation listenerInvocation = treeMaker.Apply(NIL_EXPRESSION, treeMaker.Select(listenersField, field.toName("fireListeners")), listenerArgs);
-		JCIf listenerIf = treeMaker.If(condition, treeMaker.Exec(listenerInvocation), null);
-		statements.append(listenerIf);
+		{
+			// invoke value change listeners
+			JCIdent listenersField = treeMaker.Ident(field.toName("$$" + fieldDecl.name.toString() + "$listeners"));
+			JCBinary condition = treeMaker.Binary(CTC_NOT_EQUAL, listenersField, treeMaker.Literal(CTC_BOT, null));
+			List<JCExpression> listenerArgs = List.of((JCExpression) treeMaker.Ident(fieldDecl.name));
+			JCMethodInvocation listenerInvocation = treeMaker.Apply(NIL_EXPRESSION, treeMaker.Select(listenersField, field.toName("fireListeners")), listenerArgs);
+			JCIf listenerIf = treeMaker.If(condition, treeMaker.Exec(listenerInvocation), null);
+			statements.append(listenerIf);
+		}
+		{
+			// invoke bean value change listeners
+			JCIdent listenersField = treeMaker.Ident(field.toName("$$listeners"));
+			JCBinary condition = treeMaker.Binary(CTC_NOT_EQUAL, listenersField, treeMaker.Literal(CTC_BOT, null));
+			List<JCExpression> listenerArgs = List.of(
+							treeMaker.Ident(field.toName("this")),
+							treeMaker.Select(treeMaker.Ident(field.toName(field.up().getName() + "_")), field.toName("_" + field.getName())),
+							(JCExpression) treeMaker.Ident(fieldDecl.name));
+			JCMethodInvocation listenerInvocation = treeMaker.Apply(NIL_EXPRESSION, treeMaker.Select(listenersField, field.toName("fireListeners")), listenerArgs);
+			JCIf listenerIf = treeMaker.If(condition, treeMaker.Exec(listenerInvocation), null);
+			statements.append(listenerIf);
+		}
 		
 		JCBlock methodBody = treeMaker.Block(0, statements.toList());
 		List<JCTypeParameter> methodGenericParams = List.nil();
