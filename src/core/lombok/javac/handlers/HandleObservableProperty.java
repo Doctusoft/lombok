@@ -95,7 +95,7 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 			case EXISTS_BY_USER: {
 				String altNameExpl = "";
 				if (!altName.equals(methodName)) altNameExpl = String.format(" (%s)", altName);
-				source.addWarning(
+				source.addError(
 					String.format("Not generating %s(): A method with that name already exists%s. Automatic change propagation won't work!", methodName, altNameExpl));
 				return;
 			}
@@ -109,10 +109,13 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		
 		JCMethodDecl createdSetter = createSetter(access, fieldNode, fieldNode.getTreeMaker(), source.get(), onMethod, onParam);
 		injectMethod(fieldNode.up(), createdSetter);
-		JCVariableDecl listenersField = createListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get(), onMethod, onParam);
-		injectField(fieldNode.up(), listenersField);
+		String listenersFieldName = "$$" + fieldDecl.name.toString() + "$listeners";
+		if (JavacHandlerUtil.fieldExists(listenersFieldName, fieldNode) == MemberExistsResult.NOT_EXISTS) {
+			JCVariableDecl listenersField = createListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get(), listenersFieldName);
+			injectField(fieldNode.up(), listenersField);
+		}
 		if (JavacHandlerUtil.fieldExists("$$listeners", fieldNode) == MemberExistsResult.NOT_EXISTS) {
-			JCVariableDecl beanListenersField = createBeanListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get(), onMethod, onParam);
+			JCVariableDecl beanListenersField = createBeanListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get());
 			injectField(fieldNode.up(), beanListenersField);
 		}
 		if (isModelObject) {
@@ -135,7 +138,7 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		
 		Name methodName = field.toName("getModelObjectDescriptor");
 		
-		JCReturn result = treeMaker.Return(treeMaker.Select(treeMaker.Ident(field.toName(field.up().getName() + "_")), field.toName("_descriptor")));
+		JCReturn result = treeMaker.Return(treeMaker.Select(treeMaker.Ident(field.toName(field.up().getName() + "_")), field.toName("descriptor")));
 		statements.add(result);
 		
 		JCExpression methodType = chainDotsString(field.up(), "com.doctusoft.bean.ModelObjectDescriptor");
@@ -152,19 +155,18 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 	}
 
 	
-	public static JCVariableDecl createListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
-		JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
+	public static JCVariableDecl createListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source, String fieldName) {
 		JCExpression typeRef = chainDotsString(field.up(), "com.doctusoft.bean.internal.PropertyListeners");
 		// field initialization removed. The PropertyListeners is now instantiated lazyly when first adding a listener
 		JCVariableDecl listenersField = recursiveSetGeneratedBy(maker.VarDef(
 				maker.Modifiers(Flags.PUBLIC),
-				field.toName("$$" + fieldDecl.name.toString() + "$listeners"), typeRef,
+				field.toName(fieldName), typeRef,
 					null), source, field.up().getContext());
 
 		return listenersField;
 	}
 
-	public static JCVariableDecl createBeanListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+	public static JCVariableDecl createBeanListenersField(long access, JavacNode field, JavacTreeMaker maker, JCTree source) {
 		JCExpression typeRef = chainDotsString(field.up(), "com.doctusoft.bean.internal.BeanPropertyListeners");
 		// field initialization removed. The PropertyListeners is now instantiated lazyly when first adding a listener
 		JCVariableDecl listenersField = recursiveSetGeneratedBy(maker.VarDef(

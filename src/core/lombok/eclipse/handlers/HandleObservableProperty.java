@@ -112,10 +112,14 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		
 		MethodDeclaration method = createSetter((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, onMethod, onParam);
 		injectMethod(fieldNode.up(), method);
-		FieldDeclaration listenerField = createListenersField((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, onMethod, onParam);
-		injectField(fieldNode.up(), listenerField);
+		String listenersFieldName = "$$" + new String(field.name) + "$listeners";
+		if (EclipseHandlerUtil.fieldExists(listenersFieldName, fieldNode) == MemberExistsResult.NOT_EXISTS) {
+			FieldDeclaration listenersField = createListenersField((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, listenersFieldName);
+			injectField(fieldNode.up(), listenersField);
+		}
+		String beanListenersFieldName = "$$listeners";
 		if (EclipseHandlerUtil.fieldExists("$$listeners", fieldNode) == MemberExistsResult.NOT_EXISTS) {
-			FieldDeclaration beanListenerField = createBeanListenersField((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, onMethod, onParam);
+			FieldDeclaration beanListenerField = createBeanListenersField((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, beanListenersFieldName);
 			injectField(fieldNode.up(), beanListenerField);
 		}
 		if (isModelObject) {
@@ -145,7 +149,7 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		method.bodyEnd = method.declarationSourceEnd = method.sourceEnd = source.sourceEnd;
 		
 		
-		FieldReference propertyField = new FieldReference("_descriptor".toCharArray(), p);
+		FieldReference propertyField = new FieldReference("descriptor".toCharArray(), p);
 		propertyField.receiver = new SingleNameReference((fieldNode.up().getName() + "_").toCharArray(), p);
 		ReturnStatement returnStatement = new ReturnStatement(propertyField, pS, pE);
 		
@@ -156,9 +160,8 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		return method;
 	}
 
-	static FieldDeclaration createListenersField(TypeDeclaration parent, EclipseNode fieldNode, String name, boolean shouldReturnThis, int modifier, ASTNode source, List<Annotation> onMethod, List<Annotation> onParam) {
-		FieldDeclaration field = (FieldDeclaration) fieldNode.get();
-		FieldDeclaration listenerDeclaration = new FieldDeclaration(("$$" + new String(field.name) + "$listeners").toCharArray(), 0,0);
+	static FieldDeclaration createListenersField(TypeDeclaration parent, EclipseNode fieldNode, String name, boolean shouldReturnThis, int modifier, ASTNode source, String fieldName) {
+		FieldDeclaration listenerDeclaration = new FieldDeclaration(fieldName.toCharArray(), 0,0);
 		listenerDeclaration.type = createTypeReference("com.doctusoft.bean.internal.PropertyListeners", source );
 		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
 		listenerDeclaration.modifiers |= ClassFileConstants.AccPublic;
@@ -166,8 +169,8 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		return listenerDeclaration;
 	}
 	
-	static FieldDeclaration createBeanListenersField(TypeDeclaration parent, EclipseNode fieldNode, String name, boolean shouldReturnThis, int modifier, ASTNode source, List<Annotation> onMethod, List<Annotation> onParam) {
-		FieldDeclaration listenerDeclaration = new FieldDeclaration(("$$listeners").toCharArray(), 0,0);
+	static FieldDeclaration createBeanListenersField(TypeDeclaration parent, EclipseNode fieldNode, String name, boolean shouldReturnThis, int modifier, ASTNode source, String fieldName) {
+		FieldDeclaration listenerDeclaration = new FieldDeclaration(fieldName.toCharArray(), 0,0);
 		listenerDeclaration.type = createTypeReference("com.doctusoft.bean.internal.BeanPropertyListeners", source );
 		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
 		listenerDeclaration.modifiers |= ClassFileConstants.AccPublic;
@@ -300,4 +303,5 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		method.traverse(new SetGeneratedByVisitor(source), parent.scope);
 		return method;
 	}
+	
 }
