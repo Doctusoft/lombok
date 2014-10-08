@@ -51,23 +51,51 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 	
 	private FieldDeclaration fieldDeclaration;
 	
-	@Override public void handle(AnnotationValues<ObservableProperty> annotation, Annotation ast, EclipseNode annotationNode) {
-		for (EclipseNode fieldNode : annotationNode.upFromAnnotationToFields()) {
-			TypeDeclaration typeDeclarationNode = (TypeDeclaration) fieldNode.up().get();
-			boolean isModelObject = false;
-			if (typeDeclarationNode != null && typeDeclarationNode.superInterfaces != null) {
-				for (TypeReference tr : typeDeclarationNode.superInterfaces) {
-					// TODO this should be more intelligent, without false positives of course, and checking supertypes as well ... (if possible at all)
-					if (getTypeName(tr.getTypeName()).contains("ModelObject")) {
-						isModelObject = true;
-						break;
-					}
+	public boolean generateForType(EclipseNode typeNode, Annotation ast, EclipseNode annotationNode) {
+		TypeDeclaration typeDecl = null;
+		if (typeNode.get() instanceof TypeDeclaration) typeDecl = (TypeDeclaration) typeNode.get();
+		int modifiers = typeDecl == null ? 0 : typeDecl.modifiers;
+		boolean notAClass = (modifiers &
+				(ClassFileConstants.AccInterface | ClassFileConstants.AccAnnotation)) != 0;
+		
+		if (typeDecl == null || notAClass) {
+			annotationNode.addError("@Property and @ObservableProperty is only supported on a class, an enum, or a field.");
+			return false;
+		}
+		
+		for (EclipseNode field : typeNode.down()) {
+			if (field.getKind() == Kind.FIELD) {
+				handlePropertyForField(field, ast, annotationNode);
+			}
+		}
+		return true;
+	}
+	
+
+	public void handlePropertyForField(EclipseNode fieldNode, Annotation ast, EclipseNode annotationNode) {
+		TypeDeclaration typeDeclarationNode = (TypeDeclaration) fieldNode.up().get();
+		boolean isModelObject = false;
+		if (typeDeclarationNode != null && typeDeclarationNode.superInterfaces != null) {
+			for (TypeReference tr : typeDeclarationNode.superInterfaces) {
+				// TODO this should be more intelligent, without false positives of course, and checking supertypes as well ... (if possible at all)
+				if (getTypeName(tr.getTypeName()).contains("ModelObject")) {
+					isModelObject = true;
+					break;
 				}
 			}
-			List<Annotation> onMethod = unboxAndRemoveAnnotationParameter(ast, "onMethod", "@Setter(onMethod=", annotationNode);
-			List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
-			createSetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, onMethod, onParam, isModelObject);
-			new HandleGetter().createGetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, false, onMethod);
+		}
+		List<Annotation> onMethod = unboxAndRemoveAnnotationParameter(ast, "onMethod", "@Setter(onMethod=", annotationNode);
+		List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
+		createSetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, onMethod, onParam, isModelObject);
+		new HandleGetter().createGetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, false, onMethod);
+	}
+	
+	@Override public void handle(AnnotationValues<ObservableProperty> annotation, Annotation ast, EclipseNode annotationNode) {
+		for (EclipseNode fieldNode : annotationNode.upFromAnnotationToFields()) {
+			handlePropertyForField(fieldNode, ast, annotationNode);
+		}
+		if (annotationNode.up().getKind() == Kind.TYPE) {
+			generateForType(annotationNode.up(), ast, annotationNode);
 		}
 	}
 	

@@ -42,32 +42,54 @@ import com.sun.tools.javac.util.Name;
 
 @ProviderFor(JavacAnnotationHandler.class)
 public class HandleObservableProperty extends JavacAnnotationHandler<ObservableProperty> {
+	
+	public void handleType(AccessLevel level, JavacNode typeNode, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+		JCClassDecl typeDecl = null;
+		if (typeNode.get() instanceof JCClassDecl) typeDecl = (JCClassDecl) typeNode.get();
+		long modifiers = typeDecl == null ? 0 : typeDecl.mods.flags;
+		boolean notAClass = (modifiers & (Flags.INTERFACE | Flags.ANNOTATION)) != 0;
+		
+		if (typeDecl == null || notAClass) {
+			errorNode.addError("@Property and @ObservableProperty is only supported on a class, an enum, or a field.");
+			return;
+		}
+		
+		for (JavacNode field : typeNode.down()) {
+			if (field.getKind() == Kind.FIELD) {
+				handleField(level, field, errorNode, true, onMethod, onParam);
+			}
+		}
+	}
+
 
 	@Override public void handle(AnnotationValues<ObservableProperty> annotation, JCAnnotation ast, JavacNode annotationNode) {
 		Collection<JavacNode> fields = annotationNode.upFromAnnotationToFields();
 		AccessLevel level = AccessLevel.PUBLIC;
 		List<JCAnnotation> onMethod = unboxAndRemoveAnnotationParameter(ast, "onMethod", "@Setter(onMethod=", annotationNode);
 		List<JCAnnotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
-		createSetterForFields(level, fields, annotationNode, true, onMethod, onParam);
+		for (JavacNode fieldNode : fields) {
+			handleField(level, fieldNode, annotationNode, true, onMethod, onParam);
+		}
+		if (annotationNode.up().getKind() == Kind.TYPE) {
+			handleType(level, annotationNode.up(), annotationNode, true, onMethod, onParam);
+		}
 	}
 
-	public void createSetterForFields(AccessLevel level, Collection<JavacNode> fieldNodes, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
-		for (JavacNode fieldNode : fieldNodes) {
-			boolean isModelObject = false;
-			// TODO this should be more intelligent, without false positives of course, and checking supertypes as well ... (if possible at all)
-			JCClassDecl classDecl = (JCClassDecl) fieldNode.up().get();
-			if (classDecl != null && classDecl.implementing != null) {
-				for (JCExpression implementing : classDecl.implementing) {
-					// JCIdent
-					if (implementing.toString().contains("ModelObject")) {
-						isModelObject = true;
-						break;
-					}
+	public void handleField(AccessLevel level, JavacNode fieldNode, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+		boolean isModelObject = false;
+		// TODO this should be more intelligent, without false positives of course, and checking supertypes as well ... (if possible at all)
+		JCClassDecl classDecl = (JCClassDecl) fieldNode.up().get();
+		if (classDecl != null && classDecl.implementing != null) {
+			for (JCExpression implementing : classDecl.implementing) {
+				// JCIdent
+				if (implementing.toString().contains("ModelObject")) {
+					isModelObject = true;
+					break;
 				}
 			}
-			createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam, isModelObject);
-			new HandleGetter().generateGetterForField(fieldNode, errorNode.get(), level, false);
 		}
+		createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam, isModelObject);
+		new HandleGetter().generateGetterForField(fieldNode, errorNode.get(), level, false);
 	}
 	
 	public void createSetterForField(AccessLevel level, JavacNode fieldNode, JavacNode source, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam, boolean isModelObject) {
