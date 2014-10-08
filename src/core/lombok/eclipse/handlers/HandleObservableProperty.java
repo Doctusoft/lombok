@@ -73,7 +73,14 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 	
 
 	public void handlePropertyForField(EclipseNode fieldNode, Annotation ast, EclipseNode annotationNode) {
-		TypeDeclaration typeDeclarationNode = (TypeDeclaration) fieldNode.up().get();
+		List<Annotation> onMethod = unboxAndRemoveAnnotationParameter(ast, "onMethod", "@Setter(onMethod=", annotationNode);
+		List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
+		createSetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, onMethod, onParam);
+		new HandleGetter().createGetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, false, onMethod);
+	}
+	
+	public void createGetModelObjectDescriptorIfNeeded(EclipseNode typeNode, ASTNode source) {
+		TypeDeclaration typeDeclarationNode = (TypeDeclaration) typeNode.get();
 		boolean isModelObject = false;
 		if (typeDeclarationNode != null && typeDeclarationNode.superInterfaces != null) {
 			for (TypeReference tr : typeDeclarationNode.superInterfaces) {
@@ -84,25 +91,29 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 				}
 			}
 		}
-		List<Annotation> onMethod = unboxAndRemoveAnnotationParameter(ast, "onMethod", "@Setter(onMethod=", annotationNode);
-		List<Annotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
-		createSetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, onMethod, onParam, isModelObject);
-		new HandleGetter().createGetterForField(AccessLevel.PUBLIC, fieldNode, annotationNode, annotationNode.get(), true, false, onMethod);
+		if (isModelObject) {
+			if (methodExists("getModelObjectDescriptor", typeNode, true, 0) == MemberExistsResult.NOT_EXISTS) {
+				MethodDeclaration getModelObjectDescriptor = createGetModelObjectDescriptor(typeDeclarationNode, typeNode, source);
+				injectMethod(typeNode, getModelObjectDescriptor);
+			}
+		}
 	}
 	
 	@Override public void handle(AnnotationValues<ObservableProperty> annotation, Annotation ast, EclipseNode annotationNode) {
 		for (EclipseNode fieldNode : annotationNode.upFromAnnotationToFields()) {
 			handlePropertyForField(fieldNode, ast, annotationNode);
+			createGetModelObjectDescriptorIfNeeded(fieldNode.up(), annotationNode.get());
 		}
 		if (annotationNode.up().getKind() == Kind.TYPE) {
 			generateForType(annotationNode.up(), ast, annotationNode);
+			createGetModelObjectDescriptorIfNeeded(annotationNode.up(), annotationNode.get());
 		}
 	}
 	
 	public void createSetterForField(
 			AccessLevel level, EclipseNode fieldNode, EclipseNode errorNode,
 			ASTNode source, boolean whineIfExists, List<Annotation> onMethod,
-			List<Annotation> onParam, boolean isModelObject) {
+			List<Annotation> onParam) {
 		
 		if (fieldNode.getKind() != Kind.FIELD) {
 			errorNode.addError("@Setter is only supported on a class or a field.");
@@ -150,15 +161,9 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 			FieldDeclaration beanListenerField = createBeanListenersField((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, beanListenersFieldName);
 			injectField(fieldNode.up(), beanListenerField);
 		}
-		if (isModelObject) {
-			if (methodExists("getModelObjectDescriptor", fieldNode, true, 0) == MemberExistsResult.NOT_EXISTS) {
-				MethodDeclaration getModelObjectDescriptor = createGetModelObjectDescriptor((TypeDeclaration) fieldNode.up().get(), fieldNode, source);
-				injectMethod(fieldNode.up(), getModelObjectDescriptor);
-			}
-		}
 	}
 	
-	static MethodDeclaration createGetModelObjectDescriptor(TypeDeclaration parent, EclipseNode fieldNode, ASTNode source) {
+	static MethodDeclaration createGetModelObjectDescriptor(TypeDeclaration parent, EclipseNode typeNode, ASTNode source) {
 		int pS = source.sourceStart, pE = source.sourceEnd;
 		long p = (long)pS << 32 | pE;
 
@@ -178,7 +183,7 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		
 		
 		FieldReference propertyField = new FieldReference("descriptor".toCharArray(), p);
-		propertyField.receiver = new SingleNameReference((fieldNode.up().getName() + "_").toCharArray(), p);
+		propertyField.receiver = new SingleNameReference((typeNode.getName() + "_").toCharArray(), p);
 		ReturnStatement returnStatement = new ReturnStatement(propertyField, pS, pE);
 		
 		method.statements = new Statement [] { returnStatement };

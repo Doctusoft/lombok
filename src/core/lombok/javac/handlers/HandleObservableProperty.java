@@ -69,16 +69,18 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		List<JCAnnotation> onParam = unboxAndRemoveAnnotationParameter(ast, "onParam", "@Setter(onParam=", annotationNode);
 		for (JavacNode fieldNode : fields) {
 			handleField(level, fieldNode, annotationNode, true, onMethod, onParam);
+			createGetModelObjectDescriptorIfNeeded(fieldNode.up(), level, annotationNode);
 		}
 		if (annotationNode.up().getKind() == Kind.TYPE) {
 			handleType(level, annotationNode.up(), annotationNode, true, onMethod, onParam);
+			createGetModelObjectDescriptorIfNeeded(annotationNode.up(), level, annotationNode);
 		}
 	}
-
-	public void handleField(AccessLevel level, JavacNode fieldNode, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+	
+	public void createGetModelObjectDescriptorIfNeeded(JavacNode typeNode, AccessLevel level, JavacNode source) {
 		boolean isModelObject = false;
 		// TODO this should be more intelligent, without false positives of course, and checking supertypes as well ... (if possible at all)
-		JCClassDecl classDecl = (JCClassDecl) fieldNode.up().get();
+		JCClassDecl classDecl = (JCClassDecl) typeNode.get();
 		if (classDecl != null && classDecl.implementing != null) {
 			for (JCExpression implementing : classDecl.implementing) {
 				// JCIdent
@@ -88,11 +90,21 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 				}
 			}
 		}
-		createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam, isModelObject);
+		long access = toJavacModifier(level);
+		if (isModelObject) {
+			if (methodExists("getModelObjectDescriptor", typeNode, 0) == MemberExistsResult.NOT_EXISTS) {
+				JCMethodDecl methodDecl = createGetModelObjectDescriptor(access, typeNode, typeNode.getTreeMaker(), source.get());
+				injectMethod(typeNode, methodDecl);
+			}
+		}
+	}
+
+	public void handleField(AccessLevel level, JavacNode fieldNode, JavacNode errorNode, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
+		createSetterForField(level, fieldNode, errorNode, whineIfExists, onMethod, onParam);
 		new HandleGetter().generateGetterForField(fieldNode, errorNode.get(), level, false);
 	}
 	
-	public void createSetterForField(AccessLevel level, JavacNode fieldNode, JavacNode source, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam, boolean isModelObject) {
+	public void createSetterForField(AccessLevel level, JavacNode fieldNode, JavacNode source, boolean whineIfExists, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
 		if (fieldNode.getKind() != Kind.FIELD) {
 			fieldNode.addError("@Setter is only supported on a class or a field.");
 			return;
@@ -140,12 +152,6 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 			JCVariableDecl beanListenersField = createBeanListenersField(access, fieldNode, fieldNode.getTreeMaker(), source.get());
 			injectField(fieldNode.up(), beanListenersField);
 		}
-		if (isModelObject) {
-			if (methodExists("getModelObjectDescriptor", fieldNode, 0) == MemberExistsResult.NOT_EXISTS) {
-				JCMethodDecl methodDecl = createGetModelObjectDescriptor(access, fieldNode, fieldNode.getTreeMaker(), source.get());
-				injectMethod(fieldNode.up(), methodDecl);
-			}
-		}
 	}
 	
 	public static JCMethodDecl createSetter(long access, JavacNode field, JavacTreeMaker treeMaker, JCTree source, List<JCAnnotation> onMethod, List<JCAnnotation> onParam) {
@@ -154,16 +160,16 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		return createSetter(access, field, treeMaker, setterName, returnThis, source, onMethod, onParam);
 	}
 	
-	public static JCMethodDecl createGetModelObjectDescriptor(long access, JavacNode field, JavacTreeMaker treeMaker, JCTree source) {
+	public static JCMethodDecl createGetModelObjectDescriptor(long access, JavacNode typeNode, JavacTreeMaker treeMaker, JCTree source) {
 		
 		ListBuffer<JCStatement> statements = new ListBuffer<JCStatement>();
 		
-		Name methodName = field.toName("getModelObjectDescriptor");
+		Name methodName = typeNode.toName("getModelObjectDescriptor");
 		
-		JCReturn result = treeMaker.Return(treeMaker.Select(treeMaker.Ident(field.toName(field.up().getName() + "_")), field.toName("descriptor")));
+		JCReturn result = treeMaker.Return(treeMaker.Select(treeMaker.Ident(typeNode.toName(typeNode.getName() + "_")), typeNode.toName("descriptor")));
 		statements.add(result);
 		
-		JCExpression methodType = chainDotsString(field.up(), "com.doctusoft.bean.ModelObjectDescriptor");
+		JCExpression methodType = chainDotsString(typeNode, "com.doctusoft.bean.ModelObjectDescriptor");
 		
 		JCBlock methodBody = treeMaker.Block(0, statements.toList());
 		List<JCTypeParameter> methodGenericParams = List.nil();
@@ -171,8 +177,8 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 		List<JCExpression> throwsClauses = List.nil();
 		
 		JCMethodDecl decl = recursiveSetGeneratedBy(treeMaker.MethodDef(treeMaker.Modifiers(access), methodName, methodType,
-				methodGenericParams, parameters, throwsClauses, methodBody, null), source, field.getContext());
-		copyJavadoc(field, decl, CopyJavadoc.SETTER);
+				methodGenericParams, parameters, throwsClauses, methodBody, null), source, typeNode.getContext());
+		copyJavadoc(typeNode, decl, CopyJavadoc.SETTER);
 		return decl;
 	}
 
