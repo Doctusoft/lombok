@@ -54,8 +54,14 @@ public class HandleObservableProperty extends JavacAnnotationHandler<ObservableP
 			return;
 		}
 		
+		long access = toJavacModifier(level);
+		if (JavacHandlerUtil.fieldExists("$$listeners", typeNode) == MemberExistsResult.NOT_EXISTS) {
+			JCVariableDecl beanListenersField = createBeanListenersField(access, typeNode, typeNode.getTreeMaker(), errorNode.get());
+			injectField(typeNode, beanListenersField);
+		}
+
 		for (JavacNode field : typeNode.down()) {
-			if (field.getKind() == Kind.FIELD) {
+			if (field.getKind() == Kind.FIELD && !field.getName().startsWith("$$")) {
 				handleField(level, field, errorNode, true, onMethod, onParam);
 			}
 		}

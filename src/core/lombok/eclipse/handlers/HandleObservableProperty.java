@@ -63,8 +63,14 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 			return false;
 		}
 		
+		String beanListenersFieldName = "$$listeners";
+		if (EclipseHandlerUtil.fieldExists("$$listeners", typeNode) == MemberExistsResult.NOT_EXISTS) {
+			FieldDeclaration beanListenerField = createBeanListenersField((TypeDeclaration) typeNode.get(), ast, beanListenersFieldName);
+			injectField(typeNode, beanListenerField);
+		}
+
 		for (EclipseNode field : typeNode.down()) {
-			if (field.getKind() == Kind.FIELD) {
+			if (field.getKind() == Kind.FIELD && !field.getName().startsWith("$$")) {
 				handlePropertyForField(field, ast, annotationNode);
 			}
 		}
@@ -158,7 +164,7 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		}
 		String beanListenersFieldName = "$$listeners";
 		if (EclipseHandlerUtil.fieldExists("$$listeners", fieldNode) == MemberExistsResult.NOT_EXISTS) {
-			FieldDeclaration beanListenerField = createBeanListenersField((TypeDeclaration) fieldNode.up().get(), fieldNode, setterName, shouldReturnThis, modifier, source, beanListenersFieldName);
+			FieldDeclaration beanListenerField = createBeanListenersField((TypeDeclaration) fieldNode.up().get(), source, beanListenersFieldName);
 			injectField(fieldNode.up(), beanListenerField);
 		}
 	}
@@ -202,7 +208,7 @@ public class HandleObservableProperty extends EclipseAnnotationHandler<Observabl
 		return listenerDeclaration;
 	}
 	
-	static FieldDeclaration createBeanListenersField(TypeDeclaration parent, EclipseNode fieldNode, String name, boolean shouldReturnThis, int modifier, ASTNode source, String fieldName) {
+	static FieldDeclaration createBeanListenersField(TypeDeclaration parent, ASTNode source, String fieldName) {
 		FieldDeclaration listenerDeclaration = new FieldDeclaration(fieldName.toCharArray(), 0,0);
 		listenerDeclaration.type = createTypeReference("com.doctusoft.bean.internal.BeanPropertyListeners", source );
 		listenerDeclaration.bits |= Eclipse.ECLIPSE_DO_NOT_TOUCH_FLAG;
